@@ -82,9 +82,8 @@ df.set_index("$ts")   # Some Pandas calls get upset if index isn't set or unique
 
 df = timeout(df, TIMEOUT)
 
-print("A\n", df.groupby("$id").get_group("A"))
-print("B\n", df.groupby("$id").get_group("B"))
-print("C\n", df.groupby("$id").get_group("C"))
+print("Results\n", df[["$ts", "$id", "up"]])
+
 
 print("Performance test")
 df_big = pd.DataFrame(rows, columns = names)
@@ -94,10 +93,6 @@ for i in range(16):
     df2["$ts"] += span
     df_big = pd.concat([df_big, df2], ignore_index=True)    # Ignore index so we get a nice monotonic, non-duplicate index (which will make some functions much faster)
 df_big['$id'] = np.random.randint(1, 100_000, df_big.shape[0])  # 100,000 IDs
-# df = df.reindex(columns = ["$ts"])
-# df = df.set_index("$ts")
-pd.set_option("display.max_rows",100) 
-print(df_big.head(n=100))
 
 lprofiler = LineProfiler()
 lprofiler.add_function(timeout)
