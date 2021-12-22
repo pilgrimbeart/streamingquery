@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 import datetime
+import time
+import sys
+from line_profiler import LineProfiler
+
 
 TIMEOUT = pd.Timedelta(minutes=15)  # How long does a device have to be silent before we deem it to be offline?
 BINSIZE = pd.Timedelta(minutes=5)   # What size time bins do we want on the output?
@@ -36,35 +40,75 @@ rows = [
 
     ]
 
+def timeout(df, timeout):
+    group = df.groupby("$id")
+    df["version"] = group["version"].ffill()
+    df["count"] = group.cumcount()  # Count each event
+
+    # Add a 'potential timeout' event after each event
+    # (was about 35%)
+    # df = pd.DataFrame(np.repeat(df.values, 2, axis=0))  # Duplicate
+    # newdf.columns = df.columns
+
+    delayed = df.copy(deep=True)
+    delayed["$ts"] += timeout
+    delayed = delayed.drop(columns=["count"])
+    delayed.set_index("$ts")
+
+    df = pd.concat([df, delayed])
+    df = df.sort_values(by="$ts", kind="mergesort")
+    df["count"] = df.groupby("$id")["count"].ffill()
+
+    # Calculate timeouts
+    df["time_delta"] = df['$ts'] - df.groupby("$id")["$ts"].shift(1)    # Backward-looking
+    df["timer"] = df.groupby(["$id","count"])["time_delta"].cumsum()
+    df["up"] = df["timer"] <= TIMEOUT 
+
+    # Eventify
+    df["up_changed"] = df["up"] != df.groupby("$id")["up"].shift(1) 
+
+    df = df[df["up_changed"] == True]
+
+    return df
+
+def run_timeout():
+    global df_big
+    return timeout(df_big, TIMEOUT)
+
+print("Functional test")
+# Create data
 df = pd.DataFrame(rows, columns = names)
-df.set_index("$ts")
+df.set_index("$ts")   # Some Pandas calls get upset if index isn't set or unique. It may also may sorting much slower if no proper index set?
 
-group = df.groupby("$id")
-df["version"] = group["version"].ffill()
-df["count"] = group.cumcount()  # Every group gets a rising index
-
-print("A\n", df.groupby("$id").get_group("A"))
-
-delayed = df.copy(deep=True)
-delayed["$ts"] += TIMEOUT
-delayed = delayed.drop(columns=["count"])
-
-print("delayed\n", delayed.groupby("$id").get_group("A"))
-
-df = pd.concat([df, delayed])
-df = df.sort_values(by="$ts", kind="mergesort")
-df["count"] = df.groupby("$id")["count"].ffill()
-
-df["time_delta"] = df['$ts'] - df.groupby("$id")["$ts"].shift(1)    # Backward-looking
-
-df["timer"] = df.groupby(["$id","count"])["time_delta"].cumsum()
-df["up"] = df["timer"] <= TIMEOUT 
-
-# Eventify
-df["up_changed"] = df["up"] != df.groupby("$id")["up"].shift(1) 
-
-df = df[df["up_changed"] == True]
+df = timeout(df, TIMEOUT)
 
 print("A\n", df.groupby("$id").get_group("A"))
 print("B\n", df.groupby("$id").get_group("B"))
 print("C\n", df.groupby("$id").get_group("C"))
+
+print("Performance test")
+df_big = pd.DataFrame(rows, columns = names)
+for i in range(16):
+    df2 = df_big.copy()    # Create an identical dataframe later in time
+    span = df2["$ts"].iloc[-1] - df2["$ts"].iloc[0]
+    df2["$ts"] += span
+    df_big = pd.concat([df_big, df2], ignore_index=True)    # Ignore index so we get a nice monotonic, non-duplicate index (which will make some functions much faster)
+df_big['$id'] = np.random.randint(1, 100_000, df_big.shape[0])  # 100,000 IDs
+# df = df.reindex(columns = ["$ts"])
+# df = df.set_index("$ts")
+pd.set_option("display.max_rows",100) 
+print(df_big.head(n=100))
+
+lprofiler = LineProfiler()
+lprofiler.add_function(timeout)
+lp_wrapper = lprofiler(run_timeout)
+t1 = time.time()
+lp_wrapper()
+t2 = time.time()
+lprofiler.print_stats()
+
+print("Took {time:,}ms to do {rows:,} rows, which is {speed:,} rows/sec".format(
+    time=int((t2-t1)*1000),
+    rows=len(df_big),
+    speed=int(len(df_big)/(t2-t1)))
+)

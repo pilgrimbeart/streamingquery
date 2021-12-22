@@ -118,7 +118,7 @@ for name, g in df.groupby("$id"):
         print("g now:\n",g)
 
         g['prev_delta'] = g['time_delta'].shift(1)
-        g['D'] = np.where(g.timer, g.timer, g.time_delta)
+        g['D'] = np.where(g.timer, g.timer, g["timer"]-(g["$ts"]-g["$ts"].shift()))
         print("g now:\n",g)
 
         print("Result:\n",g)
