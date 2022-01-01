@@ -70,9 +70,9 @@ def percent_of_time_where(df):
      
     groups = df.groupby("$id")
     
-    # df["version"] = groups["version"].fillna(method='ffill')  # 20x faster than ffill()
-    # df["up"] = groups["up"].fillna(method='ffill')
-    # df["bin_number"] = groups["bin_number"].fillna(method='ffill') 
+    #df["version"] =     groups["version"].fillna(method='ffill') 
+    #df["up"] =          groups["up"].fillna(method='ffill')
+    #df["bin_number"] =  groups["bin_number"].fillna(method='ffill') 
     df[["version", "up", "bin_number"]] = groups[["version", "up", "bin_number"]].ffill() # Quite slow - 50ms
 
     df['time_delta'] = groups['$ts'].shift(-1) - df['$ts'] 
@@ -80,7 +80,6 @@ def percent_of_time_where(df):
     # df['time_delta'] = groups['$ts'].diff()    # Slow if lots of groups (https://stackoverflow.com/questions/53150700/why-the-groupby-diff-is-so-slower)
     # df['time_delta'] = groups['time_delta'].shift(-1)     # Forward-looking deltas
 
-    print(df)
     df['up_time'] = df['time_delta'] * df['up']
      
     result= df.groupby(['$id', 'bin_number'])['up_time'].sum()
