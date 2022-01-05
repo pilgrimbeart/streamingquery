@@ -57,27 +57,24 @@ expected_rows = [
     ]
 
 def timeout(df, timeout):
-    group = df.groupby("$id")
-    df["version"] = group["version"].ffill()
-    df["count"] = group.cumcount()  # Count each event
+    gid = df.groupby("$id")
+    df["version"] = gid["version"].ffill()
 
-    # Add a 'potential timeout' event after each event
-    # (was about 35%)
-    # df = pd.DataFrame(np.repeat(df.values, 2, axis=0))  # Duplicate
-    # newdf.columns = df.columns
-
-    delayed = df.copy(deep=True)
+    delayed = df.copy(deep=True)    # Add a "potential timeout" after each event
     delayed["$ts"] += timeout
-    delayed = delayed.drop(columns=["count"])
 
-    df = pd.concat([df, delayed])
+    df["count"] = gid.cumcount()    # Count each event (cumcount() produces floats which is a bit strange, but they seem to run faster than int64 - probably because of NaN detection)
+
+    df = pd.concat([df, delayed])   # Merge in the potential timeouts
     df = df.sort_values(by="$ts", kind="mergesort")
+
     gid = df.groupby("$id")
     df["count"] = gid["count"].ffill()
 
     # Calculate timeouts
     df["time_delta"] = df['$ts'] - gid["$ts"].shift(1)    # Backward-looking
-    df["timer"] = df.groupby(["$id","count"])["time_delta"].cumsum()
+    print(df.dtypes)
+    df["timer"] = df.groupby(["$id","count"])["time_delta"].cumsum()    # this group-by is slow - not the cumsum()
     df["up"] = df["timer"] <= TIMEOUT 
 
     # Eventify
@@ -116,6 +113,7 @@ for i in range(16):
     df2["$ts"] += span
     df_big = pd.concat([df_big, df2], ignore_index=True)    # Ignore index so we get a nice monotonic, non-duplicate index (which will make some functions much faster)
 df_big['$id'] = np.random.randint(1, 100_000, df_big.shape[0])  # 100,000 IDs
+df_big['$id'] = df_big['$id'].astype("category")    # IDs are arguably categorical, which improves speed. Or they are pd.StringDtype() which is slower. They are not numbers.
 
 lprofiler = LineProfiler()
 lprofiler.add_function(timeout)
