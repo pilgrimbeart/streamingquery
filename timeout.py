@@ -72,15 +72,16 @@ def timeout(df, timeout):
 
     df = pd.concat([df, delayed])
     df = df.sort_values(by="$ts", kind="mergesort")
-    df["count"] = df.groupby("$id")["count"].ffill()
+    gid = df.groupby("$id")
+    df["count"] = gid["count"].ffill()
 
     # Calculate timeouts
-    df["time_delta"] = df['$ts'] - df.groupby("$id")["$ts"].shift(1)    # Backward-looking
+    df["time_delta"] = df['$ts'] - gid["$ts"].shift(1)    # Backward-looking
     df["timer"] = df.groupby(["$id","count"])["time_delta"].cumsum()
     df["up"] = df["timer"] <= TIMEOUT 
 
     # Eventify
-    df["up_changed"] = df["up"] != df.groupby("$id")["up"].shift(1) 
+    df["up_changed"] = df["up"] != gid["up"].shift(1) 
 
     df = df[df["up_changed"] == True]
 
