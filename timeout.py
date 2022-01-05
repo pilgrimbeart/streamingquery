@@ -40,6 +40,22 @@ rows = [
 
     ]
 
+
+expected_names = ["$ts", "$id", "up"]
+expected_rows = [
+                [pd.Timestamp("2021-01-01 00:00:00"), "A", False],
+                [pd.Timestamp("2021-01-01 00:00:00"), "B", False],
+                [pd.Timestamp("2021-01-01 00:00:00"), "C", False],
+                [pd.Timestamp("2021-01-01 00:02:00"), "A", True],
+                [pd.Timestamp("2021-01-01 00:03:00"), "B", True],
+                [pd.Timestamp("2021-01-01 00:04:00"), "C", True],
+                [pd.Timestamp("2021-01-01 00:17:00"), "A", False],
+                [pd.Timestamp("2021-01-01 00:18:00"), "B", False],
+                [pd.Timestamp("2021-01-01 00:27:00"), "A", True],
+                [pd.Timestamp("2021-01-01 00:52:00"), "A", False],
+                [pd.Timestamp("2021-01-01 00:54:00"), "C", False]
+    ]
+
 def timeout(df, timeout):
     group = df.groupby("$id")
     df["version"] = group["version"].ffill()
@@ -53,7 +69,6 @@ def timeout(df, timeout):
     delayed = df.copy(deep=True)
     delayed["$ts"] += timeout
     delayed = delayed.drop(columns=["count"])
-    delayed.set_index("$ts")
 
     df = pd.concat([df, delayed])
     df = df.sort_values(by="$ts", kind="mergesort")
@@ -75,17 +90,24 @@ def run_timeout():
     global df_big
     return timeout(df_big, TIMEOUT)
 
-print("Functional test")
+
+print("FUNCTIONAL TEST")
 # Create data
 df = pd.DataFrame(rows, columns = names)
-df.set_index("$ts")   # Some Pandas calls get upset if index isn't set or unique. It may also may sorting much slower if no proper index set?
 
 df = timeout(df, TIMEOUT)
+df = df[["$ts", "$id", "up"]].reset_index(drop=True)
+print("Results\n", df)
 
-print("Results\n", df[["$ts", "$id", "up"]])
+expected = pd.DataFrame(expected_rows, columns = expected_names)
+if df.equals(expected):
+    print("PASSED\n")
+else:
+    print("FAILED\nExpected:\n", expected)
+    sys.exit(-1)
 
 
-print("Performance test")
+print("PERFORMANCE TEST")
 df_big = pd.DataFrame(rows, columns = names)
 for i in range(16):
     df2 = df_big.copy()    # Create an identical dataframe later in time
