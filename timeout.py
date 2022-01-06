@@ -57,7 +57,9 @@ expected_rows = [
     ]
 
 def timeout(df, timeout):
-    gid = df.groupby("$id")
+    print(df.index.is_monotonic, df.index.is_unique)
+
+    gid = df.groupby("$id") # Leaving default sorted=True seems to make everything faster overall?!
     df["version"] = gid["version"].ffill()
 
     delayed = df.copy(deep=True)    # Add a "potential timeout" after each event
@@ -68,12 +70,11 @@ def timeout(df, timeout):
     df = pd.concat([df, delayed])   # Merge in the potential timeouts
     df = df.sort_values(by="$ts", kind="mergesort")
 
-    gid = df.groupby("$id")
+    gid = df.groupby("$id") # Todo - *assume* we need to redo group because we've added rows, unless Pandas is clever-enough not to need this?!
     df["count"] = gid["count"].ffill()
 
     # Calculate timeouts
     df["time_delta"] = df['$ts'] - gid["$ts"].shift(1)    # Backward-looking
-    print(df.dtypes)
     df["timer"] = df.groupby(["$id","count"])["time_delta"].cumsum()    # this group-by is slow - not the cumsum()
     df["up"] = df["timer"] <= TIMEOUT 
 

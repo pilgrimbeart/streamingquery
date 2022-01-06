@@ -46,6 +46,7 @@ rows = [
     ]
 
 def percent_of_time_where(df):
+    print(df.dtypes)
 
     # Create bins
     all_ids = df["$id"].unique()
@@ -68,12 +69,13 @@ def percent_of_time_where(df):
     df = pd.concat([df, bins], ignore_index=True) # Some functions hate duplicate indexes, so re-index (most don't pay any attention). Doesn't affect speed of this.
     df = df.sort_values(by="$ts", kind="mergesort") # Mergesort fastest, because largely already sorted
      
-    groups = df.groupby("$id")
+    groups = df.groupby("$id", sort=False)  # No need to sort
     
     #df["version"] =     groups["version"].fillna(method='ffill') 
     #df["up"] =          groups["up"].fillna(method='ffill')
     #df["bin_number"] =  groups["bin_number"].fillna(method='ffill') 
-    df[["version", "up", "bin_number"]] = groups[["version", "up", "bin_number"]].ffill() # Quite slow - 50ms
+    df[["version", "up", "bin_number"]] = groups[["version", "up", "bin_number"]].ffill() # The groupby is slow - around 900k rows/sec
+
 
     df['time_delta'] = groups['$ts'].shift(-1) - df['$ts'] 
     # df['time_delta'] = groups['$ts'].transform(lambda x : x.diff().shift(-1)) # Slow
@@ -108,6 +110,7 @@ for i in range(16):
     df_big = pd.concat([df_big, df2], ignore_index=True)    # Ignore index so we get a nice monotonic, non-duplicate index (which will make some functions much faster)
 # Randomise IDs to 100k values
 df_big['$id'] = np.random.randint(1, 100_000, df_big.shape[0])  # This slows it down from around 1.2M rows/sec to around 14k!
+df_big['$id'] = df_big['$id'].astype("category")    # IDs are arguably categorical, which improves speed. Or they are pd.StringDtype() which is slower. They are not numbers.
 print(df_big)
 
 lprofiler = LineProfiler()
