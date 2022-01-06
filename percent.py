@@ -46,7 +46,7 @@ rows = [
     ]
 
 def percent_of_time_where(df):
-    print(df.dtypes)
+    assert df.index.is_monotonic and df.index.is_unique # Grouping and sorting will be slower if these are not true
 
     # Create bins
     all_ids = df["$id"].unique()
@@ -63,19 +63,13 @@ def percent_of_time_where(df):
     
     # these_bins = pd.DataFrame({'$ts' : pd.bdate_range('2021-01-01', freq='5min', periods = NUM_BINS).tolist(), 'bin_number' : range(NUM_BINS)})
     
-    bins.set_index('$ts')   # Don't know if we need this, but v. fast.
-    
     # Merge bins with existing events (can we use merge(), to avoid sort()? Everything already sorted. TODO: Try sort_index() if we ensure the indices are correct first
     df = pd.concat([df, bins], ignore_index=True) # Some functions hate duplicate indexes, so re-index (most don't pay any attention). Doesn't affect speed of this.
     df = df.sort_values(by="$ts", kind="mergesort") # Mergesort fastest, because largely already sorted
      
     groups = df.groupby("$id", sort=False)  # No need to sort
     
-    #df["version"] =     groups["version"].fillna(method='ffill') 
-    #df["up"] =          groups["up"].fillna(method='ffill')
-    #df["bin_number"] =  groups["bin_number"].fillna(method='ffill') 
     df[["version", "up", "bin_number"]] = groups[["version", "up", "bin_number"]].ffill() # The groupby is slow - around 900k rows/sec
-
 
     df['time_delta'] = groups['$ts'].shift(-1) - df['$ts'] 
     # df['time_delta'] = groups['$ts'].transform(lambda x : x.diff().shift(-1)) # Slow
@@ -84,7 +78,7 @@ def percent_of_time_where(df):
 
     df['up_time'] = df['time_delta'] * df['up']
      
-    result= df.groupby(['$id', 'bin_number'])['up_time'].sum()
+    result = df.groupby(['$id', 'bin_number'])['up_time'].sum()
 
     return result
 
